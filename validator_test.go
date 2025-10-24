@@ -1,4 +1,4 @@
-// Copyright 2023-2024 Buf Technologies, Inc.
+// Copyright 2023-2025 Buf Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,14 +16,18 @@ package protovalidate
 
 import (
 	"testing"
+	"time"
 
-	pb "github.com/bufbuild/protovalidate-go/internal/gen/tests/example/v1"
+	pb "buf.build/go/protovalidate/internal/gen/tests/example/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/apipb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/sourcecontextpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestValidator_Validate(t *testing.T) {
@@ -50,6 +54,68 @@ func TestValidator_Validate(t *testing.T) {
 
 		for _, test := range tests {
 			err := val.Validate(test.msg)
+			if test.exErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		}
+	})
+}
+
+func TestValidator_ValidateGlobal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("HasMsgExprs", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			msg   *pb.HasMsgExprs
+			exErr bool
+		}{
+			{
+				&pb.HasMsgExprs{X: 2, Y: 43},
+				false,
+			},
+			{
+				&pb.HasMsgExprs{X: 9, Y: 8},
+				true,
+			},
+		}
+
+		for _, test := range tests {
+			err := Validate(test.msg)
+			if test.exErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		}
+	})
+}
+
+func TestGlobalValidator(t *testing.T) {
+	t.Parallel()
+
+	t.Run("HasMsgExprs", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			msg   *pb.HasMsgExprs
+			exErr bool
+		}{
+			{
+				&pb.HasMsgExprs{X: 2, Y: 43},
+				false,
+			},
+			{
+				&pb.HasMsgExprs{X: 9, Y: 8},
+				true,
+			},
+		}
+
+		for _, test := range tests {
+			err := GlobalValidator.Validate(test.msg)
 			if test.exErr {
 				assert.Error(t, err)
 			} else {
@@ -128,22 +194,22 @@ func TestValidator_ValidateMapFoo(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestValidator_Validate_TransitiveFieldConstraints(t *testing.T) {
+func TestValidator_Validate_TransitiveFieldRules(t *testing.T) {
 	t.Parallel()
 	val, err := New()
 	require.NoError(t, err)
-	msg := &pb.TransitiveFieldConstraint{
+	msg := &pb.TransitiveFieldRule{
 		Mask: &fieldmaskpb.FieldMask{Paths: []string{"foo", "bar"}},
 	}
 	err = val.Validate(msg)
 	require.NoError(t, err)
 }
 
-func TestValidator_Validate_MultipleStepsTransitiveFieldConstraints(t *testing.T) {
+func TestValidator_Validate_MultipleStepsTransitiveFieldRules(t *testing.T) {
 	t.Parallel()
 	val, err := New()
 	require.NoError(t, err)
-	msg := &pb.MultipleStepsTransitiveFieldConstraints{
+	msg := &pb.MultipleStepsTransitiveFieldRules{
 		Api: &apipb.Api{
 			SourceContext: &sourcecontextpb.SourceContext{
 				FileName: "path/file",
@@ -196,5 +262,295 @@ func TestValidator_Validate_RepeatedItemCel(t *testing.T) {
 	err = val.Validate(msg)
 	valErr := &ValidationError{}
 	require.ErrorAs(t, err, &valErr)
-	assert.Equal(t, "paths.no_space", valErr.Violations[0].GetConstraintId())
+	assert.Equal(t, "paths.no_space", valErr.Violations[0].Proto.GetRuleId())
+	pathsFd := msg.ProtoReflect().Descriptor().Fields().ByName("paths")
+	err = val.Validate(msg, WithFilter(FilterFunc(func(m protoreflect.Message, d protoreflect.Descriptor) bool {
+		return !(m.Interface() == msg && d == pathsFd)
+	})))
+	require.NoError(t, err)
+}
+
+func TestValidator_Validate_Filter(t *testing.T) {
+	t.Parallel()
+
+	t.Run("FilterField", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.Person{}
+		err = val.Validate(msg)
+		valErr := &ValidationError{}
+		require.ErrorAs(t, err, &valErr)
+		require.Len(t, valErr.Violations, 3)
+		idFd := msg.ProtoReflect().Descriptor().Fields().ByName("id")
+		err = val.Validate(msg, WithFilter(FilterFunc(func(_ protoreflect.Message, d protoreflect.Descriptor) bool {
+			return d == idFd
+		})))
+		require.ErrorAs(t, err, &valErr)
+		require.Len(t, valErr.Violations, 1)
+	})
+
+	t.Run("FilterInvalid", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.InvalidRules{}
+		err = val.Validate(msg)
+		require.Error(t, err)
+		err = val.Validate(msg, WithFilter(FilterFunc(
+			func(_ protoreflect.Message, _ protoreflect.Descriptor) bool {
+				return false
+			},
+		)))
+		require.NoError(t, err)
+	})
+
+	t.Run("FilterNested", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.NestedRules{
+			Field:         &pb.AllRuleTypes{},
+			RepeatedField: []*pb.AllRuleTypes{{}},
+			MapField:      map[string]*pb.AllRuleTypes{"test": {}},
+		}
+		descs := []string{}
+		err = val.Validate(msg, WithFilter(FilterFunc(
+			func(_ protoreflect.Message, d protoreflect.Descriptor) bool {
+				descs = append(descs, string(d.FullName()))
+				return false
+			},
+		)))
+		require.Equal(t, []string{
+			"tests.example.v1.NestedRules",
+			"tests.example.v1.NestedRules.required_oneof",
+			"tests.example.v1.NestedRules.field",
+			"tests.example.v1.NestedRules.field2",
+			"tests.example.v1.NestedRules.repeated_field",
+			"tests.example.v1.NestedRules.map_field",
+		}, descs)
+		require.NoError(t, err)
+		descs = []string{}
+		err = val.Validate(msg, WithFilter(FilterFunc(
+			func(_ protoreflect.Message, d protoreflect.Descriptor) bool {
+				descs = append(descs, string(d.FullName()))
+				return true
+			},
+		)))
+		require.Equal(t, []string{
+			"tests.example.v1.NestedRules",
+			"tests.example.v1.NestedRules.required_oneof",
+			"tests.example.v1.NestedRules.field",
+			"tests.example.v1.AllRuleTypes",
+			"tests.example.v1.AllRuleTypes.required_oneof",
+			"tests.example.v1.AllRuleTypes.field",
+			"tests.example.v1.NestedRules.field2",
+			"tests.example.v1.NestedRules.repeated_field",
+			"tests.example.v1.AllRuleTypes",
+			"tests.example.v1.AllRuleTypes.required_oneof",
+			"tests.example.v1.AllRuleTypes.field",
+			"tests.example.v1.NestedRules.map_field",
+			"tests.example.v1.AllRuleTypes",
+			"tests.example.v1.AllRuleTypes.required_oneof",
+			"tests.example.v1.AllRuleTypes.field",
+		}, descs)
+		require.Error(t, err)
+	})
+
+	t.Run("FilterIncludeCompilationError", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.MixedValidInvalidRules{
+			StringFieldBoolRule: "foo",
+			ValidStringRule:     "bar",
+		}
+		err = val.Validate(msg, WithFilter(FilterFunc(
+			func(_ protoreflect.Message, d protoreflect.Descriptor) bool {
+				return d == msg.ProtoReflect().Descriptor().Fields().Get(0)
+			},
+		)))
+		require.Error(t, err)
+		compErr := &CompilationError{}
+		require.ErrorAs(t, err, &compErr)
+		valErr := &ValidationError{}
+		require.NotErrorAs(t, err, &valErr)
+	})
+
+	t.Run("FilterExcludeCompilationError", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.MixedValidInvalidRules{
+			ValidStringRule:     "bar",
+			StringFieldBoolRule: "foo",
+		}
+		err = val.Validate(msg, WithFilter(FilterFunc(
+			func(_ protoreflect.Message, d protoreflect.Descriptor) bool {
+				return d == msg.ProtoReflect().Descriptor().Fields().Get(1)
+			},
+		)))
+		require.Error(t, err)
+		compErr := &CompilationError{}
+		require.NotErrorAs(t, err, &compErr)
+		valErr := &ValidationError{}
+		require.ErrorAs(t, err, &valErr)
+		require.Len(t, valErr.Violations, 1)
+	})
+}
+
+func TestValidator_ValidateCompilationError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("CompilationErrorNoViolations", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.MismatchRules{}
+		err = val.Validate(msg)
+		require.Error(t, err)
+		compErr := &CompilationError{}
+		require.ErrorAs(t, err, &compErr)
+		valErr := &ValidationError{}
+		require.NotErrorAs(t, err, &valErr)
+	})
+
+	t.Run("CompilationErrorWithViolations", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.MixedValidInvalidRules{
+			StringFieldBoolRule: "foo",
+			ValidStringRule:     "bar",
+		}
+		err = val.Validate(msg)
+		require.Error(t, err)
+		compErr := &CompilationError{}
+		require.ErrorAs(t, err, &compErr)
+		valErr := &ValidationError{}
+		require.NotErrorAs(t, err, &valErr)
+	})
+}
+
+func TestValidator_WithDisableLazy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no_evaluator_available", func(t *testing.T) {
+		t.Parallel()
+		val, err := New(
+			WithDisableLazy(),
+		)
+		require.NoError(t, err)
+		msg := &pb.Simple{}
+		err = val.Validate(msg)
+		compErr := &CompilationError{}
+		require.ErrorAs(t, err, &compErr)
+		require.ErrorContains(t, err, "no evaluator available for tests.example.v1.Simple")
+	})
+}
+
+func TestValidator_WithMessages(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defers_compile_error", func(t *testing.T) {
+		t.Parallel()
+		val, err := New(
+			WithMessages(&pb.MismatchRules{}),
+			WithDisableLazy(), // disable lazy to ensure pre-warmed descriptors are used
+		)
+		require.NoError(t, err)
+		msg := &pb.MismatchRules{}
+		err = val.Validate(msg)
+		compErr := &CompilationError{}
+		require.ErrorAs(t, err, &compErr)
+		require.ErrorContains(t, err, "expected rule \"buf.validate.FieldRules.string\"")
+	})
+}
+
+func TestValidator_WithNowFunc_Issue211(t *testing.T) {
+	t.Parallel()
+
+	nowFn := func() *timestamppb.Timestamp {
+		return timestamppb.New(time.Now().Add(time.Hour))
+	}
+
+	msg := &pb.Issue211{
+		Value: timestamppb.New(time.Now().Add(time.Minute)),
+	}
+	val, err := New()
+	require.NoError(t, err)
+	err = val.Validate(msg)
+	require.NoError(t, err)
+	err = val.Validate(msg, WithNowFunc(nowFn))
+	require.Error(t, err)
+
+	val, err = New(WithNowFunc(nowFn))
+	require.NoError(t, err)
+	err = val.Validate(msg)
+	require.Error(t, err)
+	err = val.Validate(msg, WithNowFunc(timestamppb.Now))
+	require.NoError(t, err)
+}
+
+func TestValidator_Validate_Issue141(t *testing.T) {
+	t.Parallel()
+
+	t.Run("FieldWithIssue", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.FieldWithIssue{}
+		err = val.Validate(msg)
+		var valErr *ValidationError
+		require.ErrorAs(t, err, &valErr)
+	})
+
+	t.Run("OneTwo", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.OneTwo{
+			Field1: &pb.F1{
+				Field: &pb.FieldWithIssue{},
+			},
+		}
+		err = val.Validate(msg)
+		var valErr *ValidationError
+		require.ErrorAs(t, err, &valErr)
+	})
+
+	t.Run("TwoOne", func(t *testing.T) {
+		t.Parallel()
+		val, err := New()
+		require.NoError(t, err)
+		msg := &pb.TwoOne{
+			Field1: &pb.F1{
+				Field: &pb.FieldWithIssue{},
+			},
+		}
+		err = val.Validate(msg)
+		var valErr *ValidationError
+		require.ErrorAs(t, err, &valErr)
+	})
+}
+
+func TestValidator_Validate_Issue148(t *testing.T) {
+	t.Parallel()
+	val, err := New()
+	require.NoError(t, err)
+	msg := &pb.Issue148{Test: proto.Int32(1)}
+	err = val.Validate(msg)
+	require.NoError(t, err)
+}
+
+func TestValidator_Validate_Issue187(t *testing.T) {
+	t.Parallel()
+	val, err := New()
+	require.NoError(t, err)
+	msg := pb.Issue187_builder{
+		FalseField: proto.Bool(false),
+		TrueField:  proto.Bool(true),
+	}.Build()
+	err = val.Validate(msg)
+	require.NoError(t, err)
 }

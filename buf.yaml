@@ -2,15 +2,15 @@ version: v2
 modules:
   - path: proto
 deps:
-  - buf.build/bufbuild/protovalidate
-  - buf.build/bufbuild/protovalidate-testing
-  - buf.build/envoyproxy/protoc-gen-validate
+  - buf.build/bufbuild/protovalidate:v1.0.0
 lint:
   use:
-    - DEFAULT
+    - STANDARD
   ignore_only:
     PROTOVALIDATE:
       - proto/tests/example/v1/validations.proto
+      - proto/tests/example/v1/filter.proto
+      - proto/tests/example/v1/compile.proto
 breaking:
   use:
     - FILE

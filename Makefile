@@ -7,16 +7,16 @@ MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-print-directory
 BIN := .tmp/bin
-COPYRIGHT_YEARS := 2023-2024
+COPYRIGHT_YEARS := 2023-2025
 LICENSE_IGNORE := -e internal/testdata/
 # Set to use a different compiler. For example, `GO=go1.18rc1 make test`.
 GO ?= go
-ARGS ?= --strict --strict_message --strict_error
-GOLANGCI_LINT_VERSION ?= v1.59.1
+ARGS ?= --strict_message --strict_error
+GOLANGCI_LINT_VERSION ?= v2.4.0
 # Set to use a different version of protovalidate-conformance.
-# Should be kept in sync with the version referenced in proto/buf.lock and
+# Should be kept in sync with the version referenced in buf.yaml and
 # 'buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go' in go.mod.
-CONFORMANCE_VERSION ?= v0.6.3
+CONFORMANCE_VERSION ?= v1.0.0
 
 .PHONY: help
 help: ## Describe useful make targets
@@ -40,14 +40,24 @@ lint: lint-proto lint-go  ## Lint code and protos
 .PHONY: lint-go
 lint-go: $(BIN)/golangci-lint
 	$(BIN)/golangci-lint run --modules-download-mode=readonly --timeout=3m0s ./...
+	$(BIN)/golangci-lint fmt --diff
 
 .PHONY: lint-proto
 lint-proto: $(BIN)/buf
 	$(BIN)/buf lint
 
+.PHONY: lint-fix
+lint-fix:
+	$(BIN)/golangci-lint run --fix --modules-download-mode=readonly --timeout=3m0s ./...
+	$(BIN)/golangci-lint fmt
+
 .PHONY: conformance
 conformance: $(BIN)/protovalidate-conformance protovalidate-conformance-go ## Run conformance tests
-	$(BIN)/protovalidate-conformance $(ARGS) $(BIN)/protovalidate-conformance-go
+	$(BIN)/protovalidate-conformance $(ARGS) $(BIN)/protovalidate-conformance-go --expected_failures=conformance/expected_failures.yaml
+
+.PHONY: conformance-hyperpb
+conformance-hyperpb: ## Run conformance tests against hyperpb
+	HYPERPB=true $(MAKE) conformance
 
 .PHONY: generate
 generate: generate-proto generate-license ## Regenerate code and license headers
@@ -96,7 +106,7 @@ $(BIN)/license-header: $(BIN) Makefile
 
 $(BIN)/golangci-lint: $(BIN) Makefile
 	GOBIN=$(abspath $(@D)) $(GO) install \
-		github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+		github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 $(BIN)/protovalidate-conformance: $(BIN) Makefile
 	GOBIN=$(abspath $(BIN)) $(GO) install \

@@ -1,4 +1,4 @@
-// Copyright 2023-2024 Buf Technologies, Inc.
+// Copyright 2023-2025 Buf Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,17 +18,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"text/template"
 
-	pb "github.com/bufbuild/protovalidate-go/internal/gen/tests/example/v1"
+	pb "buf.build/go/protovalidate/internal/gen/tests/example/v1"
 	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 func Example() {
-	validator, err := New()
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	person := &pb.Person{
 		Id:    1234,
 		Email: "protovalidate@buf.build",
@@ -39,11 +36,11 @@ func Example() {
 		},
 	}
 
-	err = validator.Validate(person)
+	err := Validate(person)
 	fmt.Println("valid:", err)
 
 	person.Email = "not an email"
-	err = validator.Validate(person)
+	err = Validate(person)
 	fmt.Println("invalid:", err)
 
 	// output:
@@ -62,7 +59,7 @@ func ExampleWithFailFast() {
 	err = validator.Validate(loc)
 	fmt.Println("default:", err)
 
-	validator, err = New(WithFailFast(true))
+	validator, err = New(WithFailFast())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,14 +93,14 @@ func ExampleWithMessages() {
 	// output: <nil>
 }
 
-func ExampleWithDescriptors() {
+func ExampleWithMessageDescriptors() {
 	pbType, err := protoregistry.GlobalTypes.FindMessageByName("tests.example.v1.Person")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	validator, err := New(
-		WithDescriptors(
+		WithMessageDescriptors(
 			pbType.Descriptor(),
 		),
 	)
@@ -135,7 +132,7 @@ func ExampleWithDisableLazy() {
 
 	validator, err := New(
 		WithMessages(&pb.Coordinates{}),
-		WithDisableLazy(true),
+		WithDisableLazy(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -161,9 +158,50 @@ func ExampleValidationError() {
 	err = validator.Validate(loc)
 	var valErr *ValidationError
 	if ok := errors.As(err, &valErr); ok {
-		msg := valErr.ToProto()
-		fmt.Println(msg.GetViolations()[0].GetFieldPath(), msg.GetViolations()[0].GetConstraintId())
+		violation := valErr.Violations[0]
+		fmt.Println(violation.Proto.GetField().GetElements()[0].GetFieldName(), violation.Proto.GetRuleId())
+		fmt.Println(violation.RuleValue, violation.FieldValue)
 	}
 
 	// output: lat double.gte_lte
+	// -90 999.999
+}
+
+func ExampleValidationError_localized() {
+	validator, err := New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	type ErrorInfo struct {
+		FieldName  string
+		RuleValue  any
+		FieldValue any
+	}
+
+	var ruleMessages = map[string]string{
+		"string.email_empty": "{{.FieldName}}: メールアドレスは空であってはなりません。\n",
+		"string.pattern":     "{{.FieldName}}: 値はパターン「{{.RuleValue}}」一致する必要があります。\n",
+		"uint64.gt":          "{{.FieldName}}: 値は{{.RuleValue}}を超える必要があります。（価値：{{.FieldValue}}）\n",
+	}
+
+	loc := &pb.Person{Id: 900}
+	err = validator.Validate(loc)
+	var valErr *ValidationError
+	if ok := errors.As(err, &valErr); ok {
+		for _, violation := range valErr.Violations {
+			_ = template.
+				Must(template.New("").Parse(ruleMessages[violation.Proto.GetRuleId()])).
+				Execute(os.Stdout, ErrorInfo{
+					FieldName:  violation.Proto.GetField().GetElements()[0].GetFieldName(),
+					RuleValue:  violation.RuleValue.Interface(),
+					FieldValue: violation.FieldValue.Interface(),
+				})
+		}
+	}
+
+	// output:
+	// id: 値は999を超える必要があります。（価値：900）
+	// email: メールアドレスは空であってはなりません。
+	// name: 値はパターン「^[[:alpha:]]+( [[:alpha:]]+)*$」一致する必要があります。
 }

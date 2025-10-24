@@ -20,12 +20,14 @@ jobs:
         go-version: [ 'stable', 'oldstable' ]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
       - name: Install go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
-      - name: Test conformance
+      - name: Test conformance (dynamicpb)
         run: make conformance
+      - name: Test conformance (hyperpb)
+        run: make conformance-hyperpb

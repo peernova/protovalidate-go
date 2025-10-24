@@ -1,4 +1,4 @@
-// Copyright 2023-2024 Buf Technologies, Inc.
+// Copyright 2023-2025 Buf Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package protovalidate
 import (
 	"testing"
 
-	pb "github.com/bufbuild/protovalidate-go/internal/gen/tests/example/v1"
+	pb "buf.build/go/protovalidate/internal/gen/tests/example/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +66,7 @@ func BenchmarkValidator(b *testing.B) {
 
 	b.Run("Lazy/FailFast", func(b *testing.B) {
 		b.ReportAllocs()
-		val, err := New(WithFailFast(true))
+		val, err := New(WithFailFast())
 		require.NoError(b, err)
 		b.ResetTimer()
 		b.RunParallel(func(p *testing.PB) {
@@ -81,7 +81,7 @@ func BenchmarkValidator(b *testing.B) {
 		b.ReportAllocs()
 		val, err := New(
 			WithMessages(successMsg),
-			WithDisableLazy(true),
+			WithDisableLazy(),
 		)
 		require.NoError(b, err)
 		b.ResetTimer()
@@ -97,7 +97,7 @@ func BenchmarkValidator(b *testing.B) {
 		b.ReportAllocs()
 		val, err := New(
 			WithMessages(failureMsg),
-			WithDisableLazy(true),
+			WithDisableLazy(),
 		)
 		require.NoError(b, err)
 		b.ResetTimer()
@@ -112,9 +112,9 @@ func BenchmarkValidator(b *testing.B) {
 	b.Run("PreWarmed/FailFast", func(b *testing.B) {
 		b.ReportAllocs()
 		val, err := New(
-			WithFailFast(true),
+			WithFailFast(),
 			WithMessages(failureMsg),
-			WithDisableLazy(true),
+			WithDisableLazy(),
 		)
 		require.NoError(b, err)
 		b.ResetTimer()
