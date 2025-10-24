@@ -15,6 +15,7 @@
 package protovalidate
 
 import (
+	"github.com/google/cel-go/cel"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -56,6 +57,8 @@ func WithMessageDescriptors(descriptors ...protoreflect.MessageDescriptor) Valid
 func WithDisableLazy() ValidatorOption {
 	return &disableLazyOption{}
 }
+
+func WithCelEnv(env *cel.EnvOption) ValidatorOption { return &celEnvOption{celEnv: env} }
 
 // WithExtensionTypeResolver specifies a resolver to use when reparsing unknown
 // extension types. When dealing with dynamic file descriptor sets, passing this
@@ -167,4 +170,10 @@ func (o nowFuncOption) applyToValidator(cfg *config) {
 
 func (o nowFuncOption) applyToValidation(cfg *validationConfig) {
 	cfg.nowFn = o
+}
+
+type celEnvOption struct{ celEnv cel.EnvOption }
+
+func (o *celEnvOption) applyToValidator(cfg *config) {
+	cfg.celEnv = o.celEnv
 }
