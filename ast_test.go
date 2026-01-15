@@ -55,7 +55,7 @@ func TestASTSet_ToProgramSet(t *testing.T) {
 	asts, err := compileASTs(
 		expressions{
 			Rules: []*validate.Rule{
-				{Expression: proto.String("foo")},
+				validate.Rule_builder{Expression: proto.String("foo")}.Build(),
 			},
 		},
 		env,
@@ -83,7 +83,7 @@ func TestASTSet_ReduceResiduals(t *testing.T) {
 	asts, err := compileASTs(
 		expressions{
 			Rules: []*validate.Rule{
-				{Expression: proto.String("foo")},
+				validate.Rule_builder{Expression: proto.String("foo")}.Build(),
 			},
 		},
 		env,
@@ -91,7 +91,10 @@ func TestASTSet_ReduceResiduals(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Len(t, asts, 1)
-	set, err := asts.ReduceResiduals(cel.Globals(&variable{Name: "foo", Val: true}))
+	set, err := asts.ReduceResiduals(
+		(&validate.StringRules{}).ProtoReflect(),
+		cel.Globals(&variable{Name: "foo", Val: true}),
+	)
 	require.NoError(t, err)
 	assert.Empty(t, set)
 }

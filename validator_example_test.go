@@ -26,31 +26,30 @@ import (
 )
 
 func Example() {
-	person := &pb.Person{
+	person := pb.Person_builder{
 		Id:    1234,
 		Email: "protovalidate@buf.build",
 		Name:  "Buf Build",
-		Home: &pb.Coordinates{
+		Home: pb.Coordinates_builder{
 			Lat: 27.380583333333334,
 			Lng: 33.631838888888886,
-		},
-	}
+		}.Build(),
+	}.Build()
 
 	err := Validate(person)
 	fmt.Println("valid:", err)
 
-	person.Email = "not an email"
+	person.SetEmail("not an email")
 	err = Validate(person)
 	fmt.Println("invalid:", err)
 
 	// output:
 	// valid: <nil>
-	// invalid: validation error:
-	//  - email: value must be a valid email address [string.email]
+	// invalid: validation error: email: value must be a valid email address
 }
 
 func ExampleWithFailFast() {
-	loc := &pb.Coordinates{Lat: 999.999, Lng: -999.999}
+	loc := pb.Coordinates_builder{Lat: 999.999, Lng: -999.999}.Build()
 
 	validator, err := New()
 	if err != nil {
@@ -67,11 +66,10 @@ func ExampleWithFailFast() {
 	fmt.Println("fail fast:", err)
 
 	// output:
-	// default: validation error:
-	//  - lat: value must be greater than or equal to -90 and less than or equal to 90 [double.gte_lte]
-	//  - lng: value must be greater than or equal to -180 and less than or equal to 180 [double.gte_lte]
-	// fail fast: validation error:
-	//  - lat: value must be greater than or equal to -90 and less than or equal to 90 [double.gte_lte]
+	// default: validation errors:
+	//  - lat: value must be greater than or equal to -90 and less than or equal to 90
+	//  - lng: value must be greater than or equal to -180 and less than or equal to 180
+	// fail fast: validation error: lat: value must be greater than or equal to -90 and less than or equal to 90
 }
 
 func ExampleWithMessages() {
@@ -82,11 +80,11 @@ func ExampleWithMessages() {
 		log.Fatal(err)
 	}
 
-	person := &pb.Person{
+	person := pb.Person_builder{
 		Id:    1234,
 		Email: "protovalidate@buf.build",
 		Name:  "Protocol Buffer",
-	}
+	}.Build()
 	err = validator.Validate(person)
 	fmt.Println(err)
 
@@ -108,11 +106,11 @@ func ExampleWithMessageDescriptors() {
 		log.Fatal(err)
 	}
 
-	person := &pb.Person{
+	person := pb.Person_builder{
 		Id:    1234,
 		Email: "protovalidate@buf.build",
 		Name:  "Protocol Buffer",
-	}
+	}.Build()
 	err = validator.Validate(person)
 	fmt.Println(err)
 
@@ -120,15 +118,15 @@ func ExampleWithMessageDescriptors() {
 }
 
 func ExampleWithDisableLazy() {
-	person := &pb.Person{
+	person := pb.Person_builder{
 		Id:    1234,
 		Email: "protovalidate@buf.build",
 		Name:  "Buf Build",
-		Home: &pb.Coordinates{
+		Home: pb.Coordinates_builder{
 			Lat: 27.380583333333334,
 			Lng: 33.631838888888886,
-		},
-	}
+		}.Build(),
+	}.Build()
 
 	validator, err := New(
 		WithMessages(&pb.Coordinates{}),
@@ -154,7 +152,7 @@ func ExampleValidationError() {
 		log.Fatal(err)
 	}
 
-	loc := &pb.Coordinates{Lat: 999.999}
+	loc := pb.Coordinates_builder{Lat: 999.999}.Build()
 	err = validator.Validate(loc)
 	var valErr *ValidationError
 	if ok := errors.As(err, &valErr); ok {
@@ -185,7 +183,7 @@ func ExampleValidationError_localized() {
 		"uint64.gt":          "{{.FieldName}}: 値は{{.RuleValue}}を超える必要があります。（価値：{{.FieldValue}}）\n",
 	}
 
-	loc := &pb.Person{Id: 900}
+	loc := pb.Person_builder{Id: 900}.Build()
 	err = validator.Validate(loc)
 	var valErr *ValidationError
 	if ok := errors.As(err, &valErr); ok {

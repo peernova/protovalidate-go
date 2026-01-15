@@ -19,10 +19,46 @@ import (
 	"testing"
 
 	"buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
+	pb "buf.build/go/protovalidate/internal/gen/tests/example/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
+
+func TestFieldPathElement(t *testing.T) {
+	t.Parallel()
+
+	t.Run("group field", func(t *testing.T) {
+		t.Parallel()
+
+		groupFieldDescriptor := (&pb.Proto2Group{}).ProtoReflect().Descriptor().Fields().ByName("optional")
+		element := fieldPathElement(groupFieldDescriptor)
+		require.NotNil(t, element)
+		require.Equal(t, int32(1), element.GetFieldNumber())
+		require.Equal(t, "optional", element.GetFieldName())
+		require.Equal(t, descriptorpb.FieldDescriptorProto_TYPE_GROUP, element.GetFieldType())
+	})
+	t.Run("message field", func(t *testing.T) {
+		t.Parallel()
+
+		messageFieldDescriptor := (&descriptorpb.FileDescriptorProto{}).ProtoReflect().Descriptor().Fields().ByName("options")
+		element := fieldPathElement(messageFieldDescriptor)
+		require.NotNil(t, element)
+		require.Equal(t, int32(8), element.GetFieldNumber())
+		require.Equal(t, "options", element.GetFieldName())
+		require.Equal(t, descriptorpb.FieldDescriptorProto_TYPE_MESSAGE, element.GetFieldType())
+	})
+	t.Run("extension field", func(t *testing.T) {
+		t.Parallel()
+
+		extensionTypeDescriptor := validate.E_Field.TypeDescriptor()
+		element := fieldPathElement(extensionTypeDescriptor)
+		require.NotNil(t, element)
+		require.Equal(t, "[buf.validate.field]", element.GetFieldName())
+		require.Equal(t, descriptorpb.FieldDescriptorProto_TYPE_MESSAGE, element.GetFieldType())
+	})
+}
 
 func TestMerge(t *testing.T) {
 	t.Parallel()
@@ -53,7 +89,11 @@ func TestMerge(t *testing.T) {
 
 		t.Run("validation", func(t *testing.T) {
 			t.Parallel()
-			exErr := &ValidationError{Violations: []*Violation{{Proto: &validate.Violation{RuleId: proto.String("foo")}}}}
+			exErr := &ValidationError{Violations: []*Violation{{
+				Proto: validate.Violation_builder{
+					RuleId: proto.String("foo"),
+				}.Build(),
+			}}}
 			ok, err := mergeViolations(nil, exErr, &validationConfig{failFast: true})
 			var valErr *ValidationError
 			require.ErrorAs(t, err, &valErr)
@@ -72,7 +112,11 @@ func TestMerge(t *testing.T) {
 		t.Run("non-validation dst", func(t *testing.T) {
 			t.Parallel()
 			dstErr := errors.New("some error")
-			srcErr := &ValidationError{Violations: []*Violation{{Proto: &validate.Violation{RuleId: proto.String("foo")}}}}
+			srcErr := &ValidationError{Violations: []*Violation{{
+				Proto: validate.Violation_builder{
+					RuleId: proto.String("foo"),
+				}.Build(),
+			}}}
 			ok, err := mergeViolations(dstErr, srcErr, &validationConfig{failFast: true})
 			assert.Equal(t, dstErr, err)
 			assert.False(t, ok)
@@ -83,7 +127,11 @@ func TestMerge(t *testing.T) {
 
 		t.Run("non-validation src", func(t *testing.T) {
 			t.Parallel()
-			dstErr := &ValidationError{Violations: []*Violation{{Proto: &validate.Violation{RuleId: proto.String("foo")}}}}
+			dstErr := &ValidationError{Violations: []*Violation{{
+				Proto: validate.Violation_builder{
+					RuleId: proto.String("foo"),
+				}.Build(),
+			}}}
 			srcErr := errors.New("some error")
 			ok, err := mergeViolations(dstErr, srcErr, &validationConfig{failFast: true})
 			assert.Equal(t, srcErr, err)
@@ -96,18 +144,34 @@ func TestMerge(t *testing.T) {
 		t.Run("validation", func(t *testing.T) {
 			t.Parallel()
 
-			dstErr := &ValidationError{Violations: []*Violation{{Proto: &validate.Violation{RuleId: proto.String("foo")}}}}
-			srcErr := &ValidationError{Violations: []*Violation{{Proto: &validate.Violation{RuleId: proto.String("bar")}}}}
+			dstErr := &ValidationError{Violations: []*Violation{{
+				Proto: validate.Violation_builder{
+					RuleId: proto.String("foo"),
+				}.Build(),
+			}}}
+			srcErr := &ValidationError{Violations: []*Violation{{
+				Proto: validate.Violation_builder{
+					RuleId: proto.String("bar"),
+				}.Build(),
+			}}}
 			exErr := &ValidationError{Violations: []*Violation{
-				{Proto: &validate.Violation{RuleId: proto.String("foo")}},
-				{Proto: &validate.Violation{RuleId: proto.String("bar")}},
+				{Proto: validate.Violation_builder{
+					RuleId: proto.String("foo"),
+				}.Build()},
+				{Proto: validate.Violation_builder{
+					RuleId: proto.String("bar"),
+				}.Build()},
 			}}
 			ok, err := mergeViolations(dstErr, srcErr, &validationConfig{failFast: true})
 			var valErr *ValidationError
 			require.ErrorAs(t, err, &valErr)
 			assert.True(t, proto.Equal(exErr.ToProto(), valErr.ToProto()))
 			assert.False(t, ok)
-			dstErr = &ValidationError{Violations: []*Violation{{Proto: &validate.Violation{RuleId: proto.String("foo")}}}}
+			dstErr = &ValidationError{Violations: []*Violation{{
+				Proto: validate.Violation_builder{
+					RuleId: proto.String("foo"),
+				}.Build(),
+			}}}
 			ok, err = mergeViolations(dstErr, srcErr, &validationConfig{failFast: false})
 			require.ErrorAs(t, err, &valErr)
 			assert.True(t, proto.Equal(exErr.ToProto(), valErr.ToProto()))
