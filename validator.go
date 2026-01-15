@@ -67,6 +67,10 @@ func New(options ...ValidatorOption) (Validator, error) {
 		opt.applyToValidator(&cfg)
 	}
 
+	if cfg.celEnv == nil {
+		cfg.celEnv = func(e *cel.Env) (*cel.Env, error) { return e, nil }
+	}
+
 	env, err := cel.NewEnv(cel.Lib(pvcel.NewLibrary()), cfg.celEnv)
 	if err != nil {
 		return nil, fmt.Errorf(
