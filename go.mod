@@ -28,4 +28,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/bufbuild/protovalidate-go => github.com/peernova/protovalidate-go v0.0.0-20240709135923-cab0d5a9a7da
+replace github.com/bufbuild/protovalidate-go => github.com/peernova/protovalidate-go v1.1.0
