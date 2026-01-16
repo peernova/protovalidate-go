@@ -67,11 +67,8 @@ func New(options ...ValidatorOption) (Validator, error) {
 		opt.applyToValidator(&cfg)
 	}
 
-	if cfg.celEnv == nil {
-		cfg.celEnv = func(e *cel.Env) (*cel.Env, error) { return e, nil }
-	}
-
-	env, err := cel.NewEnv(cel.Lib(pvcel.NewLibrary()), cfg.celEnv)
+	opts := append([]cel.EnvOption{cel.Lib(pvcel.NewLibrary())}, cfg.celEnv...)
+	env, err := cel.NewEnv(opts...)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to construct CEL environment: %w", err,
@@ -144,7 +141,7 @@ type config struct {
 	extensionTypeResolver protoregistry.ExtensionTypeResolver
 	allowUnknownFields    bool
 	nowFn                 func() *timestamppb.Timestamp
-	celEnv                cel.EnvOption
+	celEnv                []cel.EnvOption
 }
 
 type validationConfig struct {

@@ -58,7 +58,7 @@ func WithDisableLazy() ValidatorOption {
 	return &disableLazyOption{}
 }
 
-func WithCelEnv(env *cel.EnvOption) ValidatorOption { return &celEnvOption{celEnv: *env} }
+func WithCelEnv(env []cel.EnvOption) ValidatorOption { return &celEnvOption{celEnv: env} }
 
 // WithExtensionTypeResolver specifies a resolver to use when reparsing unknown
 // extension types. When dealing with dynamic file descriptor sets, passing this
@@ -172,7 +172,7 @@ func (o nowFuncOption) applyToValidation(cfg *validationConfig) {
 	cfg.nowFn = o
 }
 
-type celEnvOption struct{ celEnv cel.EnvOption }
+type celEnvOption struct{ celEnv []cel.EnvOption }
 
 func (o *celEnvOption) applyToValidator(cfg *config) {
 	cfg.celEnv = o.celEnv
